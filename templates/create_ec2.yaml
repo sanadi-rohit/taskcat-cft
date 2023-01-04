@@ -1,0 +1,33 @@
+# create ec2 instance
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: "Simple example how to create ec2 instance"
+Mappings:
+  RegionMap:
+    us-east-1:
+      AMI: ami-09d95fab7fff3776c
+    us-west-1:
+      AMI: ami-bf5540df
+    eu-west-1:
+      AMI: ami-3bfab942
+Parameters:
+  NameOfService:
+    Description: "The name of the service this stack is to be used for"
+    Type: String      
+Resources:
+  Ec2Instance:
+    Type: AWS::EC2::Instance
+    #UpdateReplacePolicy: Retain
+    Properties:
+      InstanceType: t2.micro
+      ImageId: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]     
+      Tags:
+        - Key: Name
+          Value: !Ref NameOfService   
+Outputs: 
+  TestOutput: 
+    Description: Return the name of the AMI ID that matches the region and environment type keys
+    Value: !FindInMap [RegionMap, !Ref "AWS::Region", AMI]
+  InstanceDns:
+    Description: The instance Dns
+    Value: !GetAtt Ec2Instance.PublicDnsName         

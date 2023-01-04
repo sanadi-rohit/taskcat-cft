@@ -1,0 +1,83 @@
+version: 0.2
+
+phases: 
+    install:
+        runtime-versions:
+            python: 3.x
+        commands:
+            - echo Entered the install phase...
+            - yum update -y
+            - yum install jq git -y -q
+            - gem install cfn-nag
+    pre_build:
+        commands:
+            - echo Entered the pre_build phase...
+            - echo Current directory is $CODEBUILD_SRC_DIR
+            - ls -la
+            - "export dirname=${PWD##*/}"
+            - echo Directory name $dirname
+            - cd ..
+            - mv $dirname $PROJECTNAME
+            - ls -la
+            - cd $PROJECTNAME
+            - echo Force git to use https:// instead of git://
+            - git config --global url."https://github.com/".insteadOf "git@github.com:"
+            - git init
+            - git remote add origin https://$GITHUBTOKEN@github.com/$GITHUBUSER/$PROJECTNAME.git
+            - git fetch
+            - git checkout -ft origin/$SOURCEBRANCH
+            - echo update all submodues
+            - git submodule init
+            - git submodule update --recursive
+            - ls -lR
+            - echo Installing Taskcat using pip3...
+            - pip install -r requirements.txt
+            - echo Verifying Taskcat installation...
+            - taskcat -v
+            - echo Configuring aws cli...
+            - aws configure set default.region us-west-2
+    build:
+        commands:
+            - echo Entered the build phase...
+            - echo run linting...
+            - cfn-lint templates/*
+            - cfn-lint templates/* > cfn_lint_output.log
+            - |
+              if $(grep -Fq "E" cfn_lint_output.log)
+              then
+                echo Linting FAILED!
+                exit 1
+              else
+                echo Linting Passed!
+                exit 0
+              fi
+            - echo run CFN-Nag to pinpoint security problems
+            - cfn_nag_scan --input-path  templates/*
+            - cfn_nag_scan --input-path  templates/* > cfn_nag_scan_output.log
+            - |
+              if $(grep -Fq "FAIL" cfn_nag_scan_output.log)
+              then
+                echo CFN-Nag security check FAILED!
+                exit 1
+              else
+                echo CFN-Nag security check Passed!
+                exit 0
+              fi
+            - echo run Taskcat tests...
+            - taskcat test run -l
+            - |
+              if $(grep -Fq "CREATE_FAILED" taskcat_outputs/index.html)
+              then
+                echo Taskcat check FAILED!
+                exit 1
+              else
+                echo Taskcat check Passed!
+                exit 0
+              fi
+    post_build:
+        commands:
+            - echo Build completed on `date`
+artifacts:
+  files:
+    - taskcat_outputs/*
+  name: taskcat-report        
